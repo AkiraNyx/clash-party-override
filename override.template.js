@@ -86,7 +86,9 @@ function mergeGroups(config, services) {
     visited.add(name);
   }
   for (const name of groups.keys()) check(name);
-  return [...groups.values()];
+  const primaryConfig = groups.get(primaryGroup);
+  groups.delete(primaryGroup);
+  return [primaryConfig, ...groups.values()];
 }
 
 function domainRule(names, policy) {

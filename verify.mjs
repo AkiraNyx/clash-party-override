@@ -15,8 +15,8 @@ const oldProvider = { type: "inline", behavior: "domain", payload: ["old.example
 const cycleProfile = {
   proxies: [proxy],
   "proxy-groups": [
-    { name: "节点选择", type: "select", proxies: ["已有中间组", proxy.name] },
     { name: "已有中间组", type: "select", proxies: ["Youtube"] },
+    { name: "节点选择", type: "select", proxies: ["已有中间组", proxy.name] },
     { name: "Youtube", type: "select", proxies: ["DIRECT"] },
   ],
   "rule-providers": { "old-provider": oldProvider },
@@ -51,6 +51,7 @@ try {
   const config = evaluate(source, cycleProfile);
   const groups = Object.fromEntries(config["proxy-groups"].map((group) => [group.name, group]));
   const providers = config["rule-providers"];
+  assert.equal(config["proxy-groups"][0].name, "节点选择");
   assert.deepEqual(groups["节点选择"].proxies, [proxy.name]);
   assert.equal(config["proxy-groups"].filter(({ name }) => name === "Youtube").length, 1);
   assert.deepEqual(groups.BiliBili.proxies, ["DIRECT", "BiliBili 港澳台"]);
@@ -82,6 +83,7 @@ try {
   validate(config, "existing-group-cycle");
 
   const providerOnly = evaluate(source, providerProfile);
+  assert.equal(providerOnly["proxy-groups"][0].name, "节点选择");
   assert.equal(providerOnly["proxy-groups"].find(({ name }) => name === "节点选择")["include-all"], true);
   assert.deepEqual(providerOnly["proxy-providers"], providerProfile["proxy-providers"]);
   validate(providerOnly, "provider-only");
