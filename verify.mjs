@@ -52,6 +52,11 @@ try {
   const groups = Object.fromEntries(config["proxy-groups"].map((group) => [group.name, group]));
   const providers = config["rule-providers"];
   assert.equal(config["proxy-groups"][0].name, "节点选择");
+  for (const group of config["proxy-groups"].filter(({ name }) => name !== "已有中间组")) {
+    assert.match(group.icon, /^data:image\/svg\+xml,/);
+  }
+  assert.ok(decodeURIComponent(groups["节点选择"].icon).includes(">🚀</text>"));
+  assert.equal(groups["已有中间组"].icon, undefined);
   assert.deepEqual(groups["节点选择"].proxies, [proxy.name]);
   assert.equal(config["proxy-groups"].filter(({ name }) => name === "Youtube").length, 1);
   assert.deepEqual(groups.BiliBili.proxies, ["DIRECT", "BiliBili 港澳台"]);

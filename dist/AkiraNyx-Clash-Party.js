@@ -15,6 +15,38 @@ const domesticGroups = new Set([
   "DeepSeek", "其他国内 AI", "BiliBili", "其他国内流媒体",
   "Steam 下载", "米哈游国内", "鹰角网络",
 ]);
+const groupEmoji = {
+  "节点选择": "🚀",
+  "广告拦截": "🛑",
+  "QUIC 控制": "⚡",
+  "OpenAI": "💬",
+  "Anthropic": "🤖",
+  "DeepSeek": "🐋",
+  "微软 Copilot": "💡",
+  "GitHub Copilot": "💻",
+  "Gemini": "✨",
+  "Apple Intelligence": "🪄",
+  "其他国内 AI": "🧠",
+  "其他国外 AI": "🌐",
+  "Telegram": "✈️",
+  "Youtube": "▶️",
+  "Netflix": "🎬",
+  "BiliBili": "📺",
+  "BiliBili 港澳台": "🎞️",
+  "其他国内流媒体": "🎵",
+  "其他国外流媒体": "🍿",
+  "Steam 下载": "📥",
+  "Steam 商店和社区": "🛒",
+  "米哈游国内": "🎮",
+  "Hoyoverse 国外": "🌌",
+  "鹰角网络": "🦅",
+  "微软软件服务": "🪟",
+  "微软系统服务": "⚙️",
+  "谷歌软件服务": "🔍",
+  "谷歌系统服务": "🧩",
+  "Apple 软件服务": "🍎",
+  "Apple 系统服务": "🛠️",
+};
 
 function selector(name, proxies, includeAll = false) {
   return {
@@ -88,7 +120,13 @@ function mergeGroups(config, services) {
   for (const name of groups.keys()) check(name);
   const primaryConfig = groups.get(primaryGroup);
   groups.delete(primaryGroup);
-  return [primaryConfig, ...groups.values()];
+  return [primaryConfig, ...groups.values()].map((group) => {
+    if (!Object.hasOwn(groupEmoji, group.name)) return group;
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+      + '<text x="12" y="12" text-anchor="middle" dominant-baseline="central" font-size="18" '
+      + `font-family="Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif">${groupEmoji[group.name]}</text></svg>`;
+    return { ...group, icon: `data:image/svg+xml,${encodeURIComponent(svg)}` };
+  });
 }
 
 function domainRule(names, policy) {
