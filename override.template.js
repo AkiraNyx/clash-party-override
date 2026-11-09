@@ -59,8 +59,6 @@ function selector(name, proxies, includeAll = false) {
 }
 
 function mergeGroups(config, services) {
-  const original = config["proxy-groups"] ?? [];
-  const groups = new Map(original.map((group) => [group.name, group]));
   const nodeNames = new Set((config.proxies ?? []).map((proxy) => proxy.name));
   const managed = new Set(services.map(([, group]) => group));
   managed.delete("DIRECT");
@@ -73,6 +71,8 @@ function mergeGroups(config, services) {
     }
   }
 
+  const groups = new Map();
+  groups.set(primaryGroup, { name: primaryGroup, type: "select", "include-all": true });
   for (const name of managed) {
     const candidates = domesticGroups.has(name) ? ["DIRECT", primaryGroup] : [primaryGroup, "DIRECT"];
     groups.set(name, selector(name, candidates, true));
@@ -82,30 +82,6 @@ function mergeGroups(config, services) {
   groups.set("Steam 下载", selector("Steam 下载", ["DIRECT"]));
   groups.set("BiliBili", selector("BiliBili", ["DIRECT", "BiliBili 港澳台"]));
   groups.set("BiliBili 港澳台", selector("BiliBili 港澳台", [primaryGroup], true));
-
-  const primary = groups.get(primaryGroup);
-  const reachesPrimary = (name, seen) => {
-    if (name === primaryGroup) return true;
-    if (seen.has(name)) return false;
-    seen.add(name);
-    return (groups.get(name)?.proxies ?? []).some((child) => reachesPrimary(child, seen));
-  };
-  if (!primary) {
-    groups.set(primaryGroup, { name: primaryGroup, type: "select", "include-all": true });
-  } else {
-    const safeCandidates = (primary.proxies ?? []).filter(
-      (name) => !reachesPrimary(name, new Set()),
-    );
-    if (safeCandidates.length !== (primary.proxies ?? []).length) {
-      const kept = { ...primary, proxies: safeCandidates };
-      if (!safeCandidates.length && !kept.use?.length && !kept["include-all"]
-          && !kept["include-all-proxies"] && !kept["include-all-providers"]) {
-        groups.set(primaryGroup, { name: primaryGroup, type: "select", "include-all": true });
-      } else {
-        groups.set(primaryGroup, kept);
-      }
-    }
-  }
 
   const visiting = new Set();
   const visited = new Set();
@@ -118,9 +94,7 @@ function mergeGroups(config, services) {
     visited.add(name);
   }
   for (const name of groups.keys()) check(name);
-  const primaryConfig = groups.get(primaryGroup);
-  groups.delete(primaryGroup);
-  return [primaryConfig, ...groups.values()].map((group) => {
+  return [...groups.values()].map((group) => {
     if (!Object.hasOwn(groupEmoji, group.name)) return group;
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
       + '<text x="12" y="12" text-anchor="middle" dominant-baseline="central" font-size="18" '

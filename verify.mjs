@@ -12,11 +12,11 @@ const tempRoot = realpathSync(tmpdir());
 const directory = mkdtempSync(join(tempRoot, "akiranyx-mihomo-"));
 const proxy = { name: "测试节点", type: "socks5", server: "127.0.0.1", port: 1080, udp: true };
 const oldProvider = { type: "inline", behavior: "domain", payload: ["old.example"] };
-const cycleProfile = {
+const subscriptionProfile = {
   proxies: [proxy],
   "proxy-groups": [
-    { name: "已有中间组", type: "select", proxies: ["Youtube"] },
-    { name: "节点选择", type: "select", proxies: ["已有中间组", proxy.name] },
+    { name: "🔰 选择节点", type: "select", proxies: ["Youtube"] },
+    { name: "节点选择", type: "select", proxies: ["🔰 选择节点", proxy.name] },
     { name: "Youtube", type: "select", proxies: ["DIRECT"] },
   ],
   "rule-providers": { "old-provider": oldProvider },
@@ -48,17 +48,21 @@ function validate(config, name) {
 
 try {
   writeFileSync(join(directory, "nodes.yaml"), JSON.stringify({ proxies: [proxy] }), "utf8");
-  const config = evaluate(source, cycleProfile);
+  const config = evaluate(source, subscriptionProfile);
   const groups = Object.fromEntries(config["proxy-groups"].map((group) => [group.name, group]));
   const providers = config["rule-providers"];
   assert.equal(config["proxy-groups"][0].name, "节点选择");
-  for (const group of config["proxy-groups"].filter(({ name }) => name !== "已有中间组")) {
+  for (const group of config["proxy-groups"]) {
     assert.match(group.icon, /^data:image\/svg\+xml,/);
   }
   assert.ok(decodeURIComponent(groups["节点选择"].icon).includes(">🚀</text>"));
-  assert.equal(groups["已有中间组"].icon, undefined);
-  assert.deepEqual(groups["节点选择"].proxies, [proxy.name]);
+  assert.equal(groups["🔰 选择节点"], undefined);
+  assert.equal(groups["节点选择"].type, "select");
+  assert.equal(groups["节点选择"]["include-all"], true);
+  assert.equal(groups["节点选择"].proxies, undefined);
+  assert.deepEqual(config.proxies, subscriptionProfile.proxies);
   assert.equal(config["proxy-groups"].filter(({ name }) => name === "Youtube").length, 1);
+  assert.deepEqual(groups.Youtube.proxies, ["节点选择", "DIRECT"]);
   assert.deepEqual(groups.BiliBili.proxies, ["DIRECT", "BiliBili 港澳台"]);
   assert.deepEqual(groups["广告拦截"].proxies, ["REJECT", "PASS"]);
   assert.deepEqual(groups["QUIC 控制"].proxies, ["PASS", "REJECT"]);
@@ -74,6 +78,7 @@ try {
   assert.ok(config.rules.includes("IP-CIDR,172.172.255.20/32,DIRECT,no-resolve"));
   assert.ok(!config.rules.some((rule) => rule.includes("old.example")));
   assert.deepEqual(config.rules.filter((rule) => rule.startsWith("MATCH,")), ["MATCH,节点选择"]);
+  assert.equal(config.rules.at(-1), "MATCH,节点选择");
   const order = ["anx-ads", "QUIC 控制", "anx-bili-intl", "anx-bilibili",
     "anx-steam-download", "anx-steam-web", "anx-domains-foreign", "anx-domains-cn",
     "anx-ip-foreign", "anx-ip-cn"];
@@ -85,7 +90,7 @@ try {
   assert.ok(config.dns["proxy-server-nameserver"].every((item) => !item.includes("#节点选择")));
   const dnsKeys = Object.keys(config.dns["nameserver-policy"]);
   assert.ok(dnsKeys.indexOf("rule-set:anx-domains-foreign") < dnsKeys.indexOf("rule-set:anx-domains-cn"));
-  validate(config, "existing-group-cycle");
+  validate(config, "subscription-groups-replaced");
 
   const providerOnly = evaluate(source, providerProfile);
   assert.equal(providerOnly["proxy-groups"][0].name, "节点选择");
