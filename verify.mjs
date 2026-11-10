@@ -66,6 +66,8 @@ try {
   assert.deepEqual(groups.BiliBili.proxies, ["DIRECT", "BiliBili 港澳台"]);
   assert.deepEqual(groups["广告拦截"].proxies, ["REJECT", "PASS"]);
   assert.deepEqual(groups["QUIC 控制"].proxies, ["PASS", "REJECT"]);
+  assert.deepEqual(groups["UDP 控制"].proxies, ["REJECT"]);
+  assert.equal(groups["UDP 控制"]["default-selected"], "REJECT");
   assert.deepEqual(groups["Steam 下载"].proxies, ["DIRECT"]);
   assert.equal(groups.Telegram["default-selected"], "节点选择");
   assert.equal(groups.DeepSeek["default-selected"], "DIRECT");
@@ -78,7 +80,7 @@ try {
   assert.ok(config.rules.includes("IP-CIDR,172.172.255.20/32,DIRECT,no-resolve"));
   assert.ok(!config.rules.some((rule) => rule.includes("old.example")));
   assert.deepEqual(config.rules.filter((rule) => rule.startsWith("MATCH,")), ["MATCH,节点选择"]);
-  assert.equal(config.rules.at(-1), "MATCH,节点选择");
+  assert.deepEqual(config.rules.slice(-2), ["MATCH,节点选择", "NETWORK,UDP,UDP 控制"]);
   const order = ["anx-ads", "QUIC 控制", "anx-bili-intl", "anx-bilibili",
     "anx-steam-download", "anx-steam-web", "anx-domains-foreign", "anx-domains-cn",
     "anx-ip-foreign", "anx-ip-cn"];
