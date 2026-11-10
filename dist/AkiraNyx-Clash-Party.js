@@ -19,6 +19,7 @@ const groupEmoji = {
   "节点选择": "🚀",
   "广告拦截": "🛑",
   "QUIC 控制": "⚡",
+  "UDP 控制": "🛡️",
   "OpenAI": "💬",
   "Anthropic": "🤖",
   "DeepSeek": "🐋",
@@ -64,6 +65,7 @@ function mergeGroups(config, services) {
   managed.delete("DIRECT");
   managed.delete(primaryGroup);
   managed.add("QUIC 控制");
+  managed.add("UDP 控制");
   managed.add("BiliBili 港澳台");
   for (const name of [...managed, primaryGroup]) {
     if (nodeNames.has(name)) {
@@ -79,6 +81,7 @@ function mergeGroups(config, services) {
   }
   groups.set("广告拦截", selector("广告拦截", ["REJECT", "PASS"]));
   groups.set("QUIC 控制", selector("QUIC 控制", ["PASS", "REJECT"]));
+  groups.set("UDP 控制", selector("UDP 控制", ["REJECT"]));
   groups.set("Steam 下载", selector("Steam 下载", ["DIRECT"]));
   groups.set("BiliBili", selector("BiliBili", ["DIRECT", "BiliBili 港澳台"]));
   groups.set("BiliBili 港澳台", selector("BiliBili 港澳台", [primaryGroup], true));
@@ -137,6 +140,8 @@ function buildRules(services) {
     "RULE-SET,anx-ip-foreign,节点选择,no-resolve",
     "RULE-SET,anx-ip-cn,DIRECT,no-resolve",
     "MATCH,节点选择",
+    // 选中的节点不支持 UDP 时，内核会跳过上面的 MATCH。
+    "NETWORK,UDP,UDP 控制",
   );
   return rules;
 }
