@@ -72,6 +72,12 @@ try {
   assert.equal(groups.Telegram["default-selected"], "节点选择");
   assert.equal(groups.DeepSeek["default-selected"], "DIRECT");
   assert.deepEqual(providers["old-provider"], oldProvider);
+  for (const host of ["anthropic.com.cdn.cloudflare.net", "anthropic.auth0.com",
+    "anthropic-com.ghost.io", "browser-intake-us5-datadoghq.com"]) {
+    assert.ok(providers["anx-anthropic"].payload.includes(host));
+    assert.ok(!providers["anx-anthropic"].payload.includes(`+.${host}`));
+  }
+  assert.ok(config.rules.includes("RULE-SET,anx-anthropic,Anthropic"));
   assert.ok(providers["anx-steam-download"].payload.includes("+.steamcontent.com"));
   assert.ok(providers["anx-steam-web"].payload.includes("+.steamcommunity.com"));
   assert.ok(providers["anx-bili-intl"].payload.includes("+.bilibili.tv"));
@@ -89,6 +95,7 @@ try {
   assert.equal(config.dns.enable, true);
   assert.equal(config.dns.ipv6, false);
   assert.ok(config.dns.nameserver.every((item) => item.endsWith("#节点选择")));
+  assert.deepEqual(config.dns["nameserver-policy"]["rule-set:anx-anthropic"], config.dns.nameserver);
   assert.ok(config.dns["proxy-server-nameserver"].every((item) => !item.includes("#节点选择")));
   const dnsKeys = Object.keys(config.dns["nameserver-policy"]);
   assert.ok(dnsKeys.indexOf("rule-set:anx-domains-foreign") < dnsKeys.indexOf("rule-set:anx-domains-cn"));

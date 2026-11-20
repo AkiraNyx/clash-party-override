@@ -22,7 +22,11 @@ TELEGRAM_CIDRS = "https://core.telegram.org/resources/cidr.txt"
 SERVICES = [
     ("ads", "广告拦截", None, "category-ads-all", ()),
     ("openai", "OpenAI", "foreign", "openai", ()),
-    ("anthropic", "Anthropic", "foreign", "anthropic", ()),
+    # Supplement https://ip.net.coffee/claude/site.html with exact hosts.
+    ("anthropic", "Anthropic", "foreign", "anthropic", (
+        "anthropic.com.cdn.cloudflare.net", "anthropic.auth0.com",
+        "anthropic-com.ghost.io", "browser-intake-us5-datadoghq.com",
+    )),
     ("deepseek", "DeepSeek", "cn", "deepseek", ()),
     ("copilot", "微软 Copilot", "foreign", "", (
         "+.copilot.com", "+.copilot.microsoft.com", "+.copilot.cloud.microsoft",
