@@ -52,6 +52,20 @@ try {
   const groups = Object.fromEntries(config["proxy-groups"].map((group) => [group.name, group]));
   const providers = config["rule-providers"];
   assert.equal(config["proxy-groups"][0].name, "节点选择");
+  const groupNames = config["proxy-groups"].map(({ name }) => name);
+  assert.deepEqual(groupNames, [
+    "节点选择", "广告拦截", "QUIC 控制", "OpenAI", "Anthropic", "DeepSeek",
+    "微软 Copilot", "GitHub Copilot", "Gemini", "Apple Intelligence",
+    "其他国内 AI", "其他国外 AI", "Telegram", "Youtube", "Netflix",
+    "其他国外流媒体", "BiliBili", "BiliBili 港澳台", "其他国内流媒体",
+    "Steam 下载", "Steam 商店和社区", "米哈游国内", "Hoyoverse 国外", "鹰角网络",
+    "微软系统服务", "谷歌系统服务", "Apple 系统服务",
+    "微软软件服务", "谷歌软件服务", "Apple 软件服务", "腾讯系软件服务", "UDP 控制",
+  ]);
+  const routedGroups = config.rules.map((rule) => rule.split(",").filter((item) => item !== "no-resolve").at(-1))
+    .filter((name) => groups[name] && name !== "节点选择")
+    .filter((name, i, names) => !i || name !== names[i - 1]);
+  assert.deepEqual(routedGroups, groupNames.filter((name) => !["节点选择", "BiliBili 港澳台"].includes(name)));
   for (const group of config["proxy-groups"]) {
     assert.match(group.icon, /^data:image\/svg\+xml,/);
   }
@@ -59,7 +73,7 @@ try {
   assert.equal(groups["🔰 选择节点"], undefined);
   assert.equal(groups["节点选择"].type, "select");
   assert.equal(groups["节点选择"]["include-all"], true);
-  assert.equal(groups["节点选择"].proxies, undefined);
+  assert.deepEqual(groups["节点选择"].proxies, ["DIRECT"]);
   assert.deepEqual(config.proxies, subscriptionProfile.proxies);
   assert.equal(config["proxy-groups"].filter(({ name }) => name === "Youtube").length, 1);
   assert.deepEqual(groups.Youtube.proxies, ["节点选择", "DIRECT"]);
@@ -71,6 +85,9 @@ try {
   assert.deepEqual(groups["Steam 下载"].proxies, ["DIRECT"]);
   assert.equal(groups.Telegram["default-selected"], "节点选择");
   assert.equal(groups.DeepSeek["default-selected"], "DIRECT");
+  assert.equal(groups["腾讯系软件服务"]["default-selected"], "DIRECT");
+  assert.deepEqual(groups["腾讯系软件服务"].proxies, ["DIRECT", "节点选择"]);
+  assert.equal(groups["腾讯系软件服务"]["include-all"], true);
   assert.deepEqual(providers["old-provider"], oldProvider);
   for (const host of ["anthropic.com.cdn.cloudflare.net", "anthropic.auth0.com",
     "anthropic-com.ghost.io", "browser-intake-us5-datadoghq.com"]) {
@@ -81,14 +98,22 @@ try {
   assert.ok(providers["anx-steam-download"].payload.includes("+.steamcontent.com"));
   assert.ok(providers["anx-steam-web"].payload.includes("+.steamcommunity.com"));
   assert.ok(providers["anx-bili-intl"].payload.includes("+.bilibili.tv"));
+  for (const domain of ["+.qq.com", "+.weixin.com", "+.qcloud.com", "+.tencent.com"]) {
+    assert.ok(providers["anx-tencent"].payload.includes(domain));
+  }
+  const appleSystemRule = config.rules.find((rule) => rule.endsWith(",Apple 系统服务"));
+  assert.match(appleSystemRule, /^AND,/);
+  assert.ok(appleSystemRule.includes("RULE-SET,anx-apple-system"));
+  assert.match(appleSystemRule, /\(NOT,\(\(.*RULE-SET,anx-apple-software/);
   assert.ok(providers["anx-telegram-ip"].payload.every((entry) => !entry.includes(":")));
   assert.equal(config.rules[0], "IP-CIDR6,::/0,REJECT,no-resolve");
   assert.ok(config.rules.includes("IP-CIDR,172.172.255.20/32,DIRECT,no-resolve"));
   assert.ok(!config.rules.some((rule) => rule.includes("old.example")));
   assert.deepEqual(config.rules.filter((rule) => rule.startsWith("MATCH,")), ["MATCH,节点选择"]);
   assert.deepEqual(config.rules.slice(-2), ["MATCH,节点选择", "NETWORK,UDP,UDP 控制"]);
-  const order = ["anx-ads", "QUIC 控制", "anx-bili-intl", "anx-bilibili",
-    "anx-steam-download", "anx-steam-web", "anx-domains-foreign", "anx-domains-cn",
+  const order = ["anx-ads", "QUIC 控制", "anx-other-ai-cn", "anx-other-ai-foreign",
+    "anx-bili-intl", "anx-iqiyi-intl", "anx-media-foreign", "anx-bilibili", "anx-media-cn",
+    "anx-steam-download", "anx-steam-web", "anx-tencent", "anx-domains-foreign", "anx-domains-cn",
     "anx-ip-foreign", "anx-ip-cn"];
   const positions = order.map((item) => config.rules.findIndex((rule) => rule.includes(item)));
   assert.ok(positions.every((position, i) => position >= 0 && (!i || position > positions[i - 1])));
@@ -96,14 +121,20 @@ try {
   assert.equal(config.dns.ipv6, false);
   assert.ok(config.dns.nameserver.every((item) => item.endsWith("#节点选择")));
   assert.deepEqual(config.dns["nameserver-policy"]["rule-set:anx-anthropic"], config.dns.nameserver);
+  assert.deepEqual(config.dns["nameserver-policy"]["rule-set:anx-tencent"],
+    config.dns["nameserver-policy"]["rule-set:anx-domains-cn"]);
   assert.ok(config.dns["proxy-server-nameserver"].every((item) => !item.includes("#节点选择")));
   const dnsKeys = Object.keys(config.dns["nameserver-policy"]);
+  for (const name of ["anx-other-ai-cn", "anx-media-cn"]) {
+    assert.ok(dnsKeys.indexOf(`rule-set:${name}`) < dnsKeys.indexOf("rule-set:anx-tencent"));
+  }
   assert.ok(dnsKeys.indexOf("rule-set:anx-domains-foreign") < dnsKeys.indexOf("rule-set:anx-domains-cn"));
   validate(config, "subscription-groups-replaced");
 
   const providerOnly = evaluate(source, providerProfile);
   assert.equal(providerOnly["proxy-groups"][0].name, "节点选择");
   assert.equal(providerOnly["proxy-groups"].find(({ name }) => name === "节点选择")["include-all"], true);
+  assert.deepEqual(providerOnly["proxy-groups"][0].proxies, ["DIRECT"]);
   assert.deepEqual(providerOnly["proxy-providers"], providerProfile["proxy-providers"]);
   validate(providerOnly, "provider-only");
 

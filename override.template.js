@@ -13,7 +13,7 @@ const buildData = /* BUILD_DATA */ null;
 const primaryGroup = "节点选择";
 const domesticGroups = new Set([
   "DeepSeek", "其他国内 AI", "BiliBili", "其他国内流媒体",
-  "Steam 下载", "米哈游国内", "鹰角网络",
+  "Steam 下载", "米哈游国内", "鹰角网络", "腾讯系软件服务",
 ]);
 const groupEmoji = {
   "节点选择": "🚀",
@@ -47,6 +47,7 @@ const groupEmoji = {
   "谷歌系统服务": "🧩",
   "Apple 软件服务": "🍎",
   "Apple 系统服务": "🛠️",
+  "腾讯系软件服务": "🐧",
 };
 
 function selector(name, proxies, includeAll = false) {
@@ -59,7 +60,7 @@ function selector(name, proxies, includeAll = false) {
   };
 }
 
-function mergeGroups(config, services) {
+function mergeGroups(config, services, rules) {
   const nodeNames = new Set((config.proxies ?? []).map((proxy) => proxy.name));
   const managed = new Set(services.map(([, group]) => group));
   managed.delete("DIRECT");
@@ -74,7 +75,7 @@ function mergeGroups(config, services) {
   }
 
   const groups = new Map();
-  groups.set(primaryGroup, { name: primaryGroup, type: "select", "include-all": true });
+  groups.set(primaryGroup, { name: primaryGroup, type: "select", proxies: ["DIRECT"], "include-all": true });
   for (const name of managed) {
     const candidates = domesticGroups.has(name) ? ["DIRECT", primaryGroup] : [primaryGroup, "DIRECT"];
     groups.set(name, selector(name, candidates, true));
@@ -97,7 +98,13 @@ function mergeGroups(config, services) {
     visited.add(name);
   }
   for (const name of groups.keys()) check(name);
-  return [...groups.values()].map((group) => {
+  const order = new Set([primaryGroup]);
+  for (const rule of rules) {
+    const name = rule.replace(/,no-resolve$/, "").split(",").pop();
+    if (groups.has(name)) order.add(name);
+    if (name === "BiliBili") order.add("BiliBili 港澳台");
+  }
+  return [...order].map((name) => groups.get(name)).map((group) => {
     if (!Object.hasOwn(groupEmoji, group.name)) return group;
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
       + '<text x="12" y="12" text-anchor="middle" dominant-baseline="central" font-size="18" '
@@ -106,9 +113,9 @@ function mergeGroups(config, services) {
   });
 }
 
-function domainRule(names, policy) {
-  if (names.length === 1) return `RULE-SET,${names[0]},${policy}`;
-  return `OR,(${names.map((name) => `(RULE-SET,${name})`).join(",")}),${policy}`;
+function domainMatch(names) {
+  if (names.length === 1) return `RULE-SET,${names[0]}`;
+  return `OR,(${names.map((name) => `(RULE-SET,${name})`).join(",")})`;
 }
 
 function buildRules(services) {
@@ -132,7 +139,13 @@ function buildRules(services) {
       "169.254.0.0/16", "224.0.0.0/4"].map((cidr) => `IP-CIDR,${cidr},DIRECT,no-resolve`),
   );
   for (const [names, policy] of services) {
-    rules.push(domainRule(names, policy));
+    let match = domainMatch(names);
+    if (policy === "Apple 系统服务") {
+      // Apple Music/TV hosts also fall under the broader iTunes system domains.
+      const [software] = services.find(([providers]) => providers.includes("anx-apple-software"));
+      match = `AND,((${match}),(NOT,((${domainMatch(software)}))))`;
+    }
+    rules.push(`${match},${policy}`);
     if (policy === "广告拦截") rules.push("AND,((NETWORK,UDP),(DST-PORT,443)),QUIC 控制");
     if (policy === "Telegram") rules.push("RULE-SET,anx-telegram-ip,Telegram,no-resolve");
   }
@@ -196,9 +209,10 @@ function main(config) {
       throw new Error(`订阅规则集名称与覆写冲突：${name}`);
     }
   }
-  config["proxy-groups"] = mergeGroups(config, services);
+  const rules = buildRules(services);
+  config["proxy-groups"] = mergeGroups(config, services, rules);
   config["rule-providers"] = { ...previousProviders, ...providers };
-  config.rules = buildRules(services);
+  config.rules = rules;
   config.dns = buildDns(services, bootstrap);
   return config;
 }

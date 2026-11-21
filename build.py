@@ -37,12 +37,22 @@ SERVICES = [
     ("apple-ai", "Apple Intelligence", "foreign", "apple-intelligence", (
         "cp4.cloudflare.com",
     )),
+    ("other-ai-cn", "其他国内 AI", "cn", "category-ai-cn", ()),
+    ("other-ai-foreign", "其他国外 AI", "foreign", "category-ai-!cn", ()),
     ("telegram", "Telegram", "foreign", "telegram", ()),
     ("youtube", "Youtube", "foreign", "youtube", ()),
     ("netflix", "Netflix", "foreign", "netflix", ()),
     ("bili-intl", "其他国外流媒体", "foreign", "biliintl", ()),
     ("iqiyi-intl", "其他国外流媒体", "foreign", "", ("+.iq.com",)),
+    ("media-foreign", "其他国外流媒体", "foreign",
+        "primevideo spotify hulu twitch dazn bahamut tiktok", (
+            "+.disneyplus.com", "+.disneypluscdn.com", "+.dssott.com",
+            "+.max.com", "+.hbomax.com", "+.hbomaxcdn.com",
+        )),
     ("bilibili", "BiliBili", "cn", "bilibili bilibili-cdn", ()),
+    ("media-cn", "其他国内流媒体", "cn", "iqiyi youku douyin douyu huya tencent-tme", (
+        "+.mgtv.com", "v.qq.com", "video.qq.com", "+.music.163.com", "+.music.126.net",
+    )),
     ("steam-download", "Steam 下载", "cn", "", (
         "+.steamcontent.com", "steampipe.akamaized.net", "steampipe-kr.akamaized.net",
         "client-update.queniuqe.com", "dl.steam.clngaa.com", "st.dl.bscstorage.net",
@@ -71,23 +81,14 @@ SERVICES = [
     ("google-system", "谷歌系统服务", "foreign", "google-play googlefcm", (
         "update.googleapis.com", "tools.google.com", "dl.google.com",
     )),
-    ("apple-software", "Apple 软件服务", "foreign", "icloud apple-music apple-tvplus", ()),
     ("apple-system", "Apple 系统服务", "foreign", "apple-update itunes", (
         "+.apps.apple.com", "+.push.apple.com",
     )),
-    ("other-ai-cn", "其他国内 AI", "cn", "category-ai-cn", ()),
-    ("other-ai-foreign", "其他国外 AI", "foreign", "category-ai-!cn", ()),
-    ("media-cn", "其他国内流媒体", "cn", "iqiyi youku douyin douyu huya tencent-tme", (
-        "+.mgtv.com", "v.qq.com", "video.qq.com", "+.music.163.com", "+.music.126.net",
-    )),
-    ("media-foreign", "其他国外流媒体", "foreign",
-        "primevideo spotify hulu twitch dazn bahamut tiktok", (
-            "+.disneyplus.com", "+.disneypluscdn.com", "+.dssott.com",
-            "+.max.com", "+.hbomax.com", "+.hbomaxcdn.com",
-        )),
     ("microsoft", "微软软件服务", "foreign", "microsoft github onedrive azure xbox", ()),
     ("google", "谷歌软件服务", "foreign", "google", ()),
+    ("apple-software", "Apple 软件服务", "foreign", "icloud apple-music apple-tvplus", ()),
     ("apple", "Apple 软件服务", "foreign", "apple", ()),
+    ("tencent", "腾讯系软件服务", "cn", "tencent", ()),
     ("domains-foreign", "节点选择", "foreign", "geolocation-!cn", ()),
     ("domains-cn", "DIRECT", "cn", "cn", ()),
 ]
