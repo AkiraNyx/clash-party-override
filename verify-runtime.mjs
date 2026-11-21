@@ -59,29 +59,20 @@ async function waitForGroup(child, port, path, expected) {
   throw new Error(`Mihomo group did not become ready: ${lastError.message}`);
 }
 
-function requestThroughProxy(port, targetPort) {
-  return new Promise((resolve, reject) => {
-    const request = http.request({
-      hostname: "127.0.0.1", port, method: "CONNECT", path: `review.invalid:${targetPort}`,
-    });
+async function requestThroughProxy(port, targetPort) {
+  const response = await new Promise((resolve, reject) => {
+    const request = http.get({
+      hostname: "127.0.0.1", port, path: `http://review.invalid:${targetPort}/`,
+      headers: { Host: `review.invalid:${targetPort}` },
+    }, resolve);
     request.on("error", reject);
-    request.setTimeout(3000, () => request.destroy(new Error("CONNECT timed out")));
-    request.on("connect", (response, socket) => {
-      if (response.statusCode !== 200) {
-        socket.destroy();
-        reject(new Error(`CONNECT returned HTTP ${response.statusCode}`));
-        return;
-      }
-      let body = "";
-      socket.setEncoding("utf8");
-      socket.setTimeout(3000, () => socket.destroy(new Error("Direct request timed out")));
-      socket.on("data", (chunk) => { body += chunk; });
-      socket.on("error", reject);
-      socket.on("end", () => resolve(body));
-      socket.write("GET / HTTP/1.1\r\nHost: review.invalid\r\nConnection: close\r\n\r\n");
-    });
-    request.end();
+    request.setTimeout(3000, () => request.destroy(new Error("Direct request timed out")));
   });
+  response.setEncoding("utf8");
+  let body = "";
+  for await (const chunk of response) body += chunk;
+  assert.equal(response.statusCode, 200, `Direct request returned HTTP ${response.statusCode}`);
+  return body;
 }
 
 export async function verifyRuntime(core, applyOverride, directory) {
@@ -146,6 +137,7 @@ export async function verifyRuntime(core, applyOverride, directory) {
     await waitForGroup(child, apiPort, groupPath, expected);
     assert.equal(config["proxy-groups"][0].use.length, 5);
     await api(apiPort, groupPath, "PUT", { name: "DIRECT" });
+    assert.equal((await api(apiPort, groupPath)).now, "DIRECT");
     assert.match(await requestThroughProxy(mixedPort, targetPort), /direct-target-reached/);
     assert.equal(directHits, 1);
     assert.equal(upstreamHits, 0, "DIRECT must never dial a subscription proxy");
