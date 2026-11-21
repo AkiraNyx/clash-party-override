@@ -50,18 +50,25 @@ const groupEmoji = {
   "腾讯系软件服务": "🐧",
 };
 
-function selector(name, proxies, includeAll = false) {
+function selector(name, proxies) {
   return {
     name,
     type: "select",
     proxies,
     "default-selected": proxies[0],
-    ...(includeAll ? { "include-all": true } : {}),
   };
 }
 
 function mergeGroups(config, services, rules) {
   const nodeNames = new Set((config.proxies ?? []).map((proxy) => proxy.name));
+  const directProviderName = "anx-direct-last";
+  const directProvider = { type: "inline", payload: [{ name: "DIRECT", type: "direct" }] };
+  const previousProviders = config["proxy-providers"] ?? {};
+  if (Object.hasOwn(previousProviders, directProviderName)
+      && JSON.stringify(previousProviders[directProviderName]) !== JSON.stringify(directProvider)) {
+    throw new Error(`订阅代理集合名称与覆写冲突：${directProviderName}`);
+  }
+  const providerNames = Object.keys(previousProviders).filter((name) => name !== directProviderName);
   const managed = new Set(services.map(([, group]) => group));
   managed.delete("DIRECT");
   managed.delete(primaryGroup);
@@ -75,17 +82,27 @@ function mergeGroups(config, services, rules) {
   }
 
   const groups = new Map();
-  groups.set(primaryGroup, { name: primaryGroup, type: "select", proxies: ["DIRECT"], "include-all": true });
+  const primary = { name: primaryGroup, type: "select", proxies: [...nodeNames] };
+  if (providerNames.length) {
+    // Provider members follow explicit proxies; a final inline provider keeps DIRECT last.
+    config["proxy-providers"] = { ...previousProviders, [directProviderName]: directProvider };
+    primary.use = [...providerNames, directProviderName];
+  } else {
+    primary.proxies.push("DIRECT");
+  }
+  groups.set(primaryGroup, primary);
   for (const name of managed) {
     const candidates = domesticGroups.has(name) ? ["DIRECT", primaryGroup] : [primaryGroup, "DIRECT"];
-    groups.set(name, selector(name, candidates, true));
+    groups.set(name, { ...selector(name, [...candidates, ...nodeNames]), use: providerNames });
   }
   groups.set("广告拦截", selector("广告拦截", ["REJECT", "PASS"]));
   groups.set("QUIC 控制", selector("QUIC 控制", ["PASS", "REJECT"]));
   groups.set("UDP 控制", selector("UDP 控制", ["REJECT"]));
   groups.set("Steam 下载", selector("Steam 下载", ["DIRECT"]));
   groups.set("BiliBili", selector("BiliBili", ["DIRECT", "BiliBili 港澳台"]));
-  groups.set("BiliBili 港澳台", selector("BiliBili 港澳台", [primaryGroup], true));
+  groups.set("BiliBili 港澳台", {
+    ...selector("BiliBili 港澳台", [primaryGroup, ...nodeNames]), use: providerNames,
+  });
 
   const visiting = new Set();
   const visited = new Set();

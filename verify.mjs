@@ -11,9 +11,11 @@ const source = readFileSync(new URL("./dist/AkiraNyx-Clash-Party.js", import.met
 const tempRoot = realpathSync(tmpdir());
 const directory = mkdtempSync(join(tempRoot, "akiranyx-mihomo-"));
 const proxy = { name: "测试节点", type: "socks5", server: "127.0.0.1", port: 1080, udp: true };
+const orderedProxies = [{ ...proxy, name: "Z-node" }, proxy, { ...proxy, name: "A-node" }];
+const nodeNames = orderedProxies.map(({ name }) => name);
 const oldProvider = { type: "inline", behavior: "domain", payload: ["old.example"] };
 const subscriptionProfile = {
-  proxies: [proxy],
+  proxies: orderedProxies,
   "proxy-groups": [
     { name: "🔰 选择节点", type: "select", proxies: ["Youtube"] },
     { name: "节点选择", type: "select", proxies: ["🔰 选择节点", proxy.name] },
@@ -24,7 +26,10 @@ const subscriptionProfile = {
   dns: { enable: false, nameserver: ["127.0.0.53"] },
 };
 const providerProfile = {
-  "proxy-providers": { demo: { type: "file", path: "./nodes.yaml" } },
+  "proxy-providers": {
+    "Z-provider": { type: "file", path: "./nodes.yaml" },
+    "A-provider": { type: "inline", payload: [{ ...proxy, name: "provider-node" }] },
+  },
 };
 
 function evaluate(script, profile) {
@@ -72,11 +77,11 @@ try {
   assert.ok(decodeURIComponent(groups["节点选择"].icon).includes(">🚀</text>"));
   assert.equal(groups["🔰 选择节点"], undefined);
   assert.equal(groups["节点选择"].type, "select");
-  assert.equal(groups["节点选择"]["include-all"], true);
-  assert.deepEqual(groups["节点选择"].proxies, ["DIRECT"]);
+  assert.equal(groups["节点选择"]["include-all"], undefined);
+  assert.deepEqual(groups["节点选择"].proxies, [...nodeNames, "DIRECT"]);
   assert.deepEqual(config.proxies, subscriptionProfile.proxies);
   assert.equal(config["proxy-groups"].filter(({ name }) => name === "Youtube").length, 1);
-  assert.deepEqual(groups.Youtube.proxies, ["节点选择", "DIRECT"]);
+  assert.deepEqual(groups.Youtube.proxies, ["节点选择", "DIRECT", ...nodeNames]);
   assert.deepEqual(groups.BiliBili.proxies, ["DIRECT", "BiliBili 港澳台"]);
   assert.deepEqual(groups["广告拦截"].proxies, ["REJECT", "PASS"]);
   assert.deepEqual(groups["QUIC 控制"].proxies, ["PASS", "REJECT"]);
@@ -86,8 +91,8 @@ try {
   assert.equal(groups.Telegram["default-selected"], "节点选择");
   assert.equal(groups.DeepSeek["default-selected"], "DIRECT");
   assert.equal(groups["腾讯系软件服务"]["default-selected"], "DIRECT");
-  assert.deepEqual(groups["腾讯系软件服务"].proxies, ["DIRECT", "节点选择"]);
-  assert.equal(groups["腾讯系软件服务"]["include-all"], true);
+  assert.deepEqual(groups["腾讯系软件服务"].proxies, ["DIRECT", "节点选择", ...nodeNames]);
+  assert.equal(groups["腾讯系软件服务"]["include-all"], undefined);
   assert.deepEqual(providers["old-provider"], oldProvider);
   for (const host of ["anthropic.com.cdn.cloudflare.net", "anthropic.auth0.com",
     "anthropic-com.ghost.io", "browser-intake-us5-datadoghq.com"]) {
@@ -131,12 +136,35 @@ try {
   assert.ok(dnsKeys.indexOf("rule-set:anx-domains-foreign") < dnsKeys.indexOf("rule-set:anx-domains-cn"));
   validate(config, "subscription-groups-replaced");
 
+  const proxiesOnly = evaluate(source, { proxies: orderedProxies });
+  assert.deepEqual(proxiesOnly["proxy-groups"][0].proxies, [...nodeNames, "DIRECT"]);
+  assert.deepEqual(proxiesOnly.proxies, orderedProxies);
+  validate(proxiesOnly, "proxies-only");
+
   const providerOnly = evaluate(source, providerProfile);
   assert.equal(providerOnly["proxy-groups"][0].name, "节点选择");
-  assert.equal(providerOnly["proxy-groups"].find(({ name }) => name === "节点选择")["include-all"], true);
-  assert.deepEqual(providerOnly["proxy-groups"][0].proxies, ["DIRECT"]);
-  assert.deepEqual(providerOnly["proxy-providers"], providerProfile["proxy-providers"]);
+  assert.equal(providerOnly["proxy-groups"][0]["include-all"], undefined);
+  assert.deepEqual(providerOnly["proxy-groups"][0].proxies, []);
+  assert.deepEqual(providerOnly["proxy-groups"][0].use, ["Z-provider", "A-provider", "anx-direct-last"]);
+  for (const [name, provider] of Object.entries(providerProfile["proxy-providers"])) {
+    assert.deepEqual(providerOnly["proxy-providers"][name], provider);
+  }
+  assert.deepEqual(providerOnly["proxy-providers"]["anx-direct-last"], {
+    type: "inline", payload: [{ name: "DIRECT", type: "direct" }],
+  });
+  for (const group of providerOnly["proxy-groups"].slice(1)) {
+    assert.ok(!group.use?.includes("anx-direct-last"));
+  }
   validate(providerOnly, "provider-only");
+
+  const mixed = evaluate(source, { ...providerProfile, proxies: orderedProxies });
+  assert.deepEqual(mixed["proxy-groups"][0].proxies, nodeNames);
+  assert.deepEqual(mixed["proxy-groups"][0].use, ["Z-provider", "A-provider", "anx-direct-last"]);
+  validate(mixed, "proxies-and-providers");
+  assert.deepEqual(evaluate(source, mixed)["proxy-groups"], mixed["proxy-groups"]);
+  assert.throws(() => evaluate(source, {
+    "proxy-providers": { "anx-direct-last": { type: "file", path: "./custom.yaml" } },
+  }), /订阅代理集合名称与覆写冲突/);
 
   const guard = evaluate(source.replace("enableDnsGuard: false", "enableDnsGuard: true")
     .replace("allowedDnsIPv4: []", 'allowedDnsIPv4: ["192.168.1.53/32"]')
