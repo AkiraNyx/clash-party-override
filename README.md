@@ -13,6 +13,8 @@
 
 `节点选择` 中的节点按配置文件 `proxies` 的原始顺序排列，普通订阅展开后的节点也沿用收到的列表顺序。使用 `proxy-providers` 时，先列出配置内的节点，再按代理集合的声明顺序引入各集合的节点，保留集合内部的顺序和更新机制。`DIRECT` 始终位于最后。业务组内的节点候选也沿用相同的来源顺序。
 
+代理集合中的节点最终名称为 `DIRECT` 时，会显示为 `订阅 · DIRECT`；末尾的 `DIRECT` 保持真实直连。此名称保护在上游的替换、前后缀和表达式重命名之后执行。与覆写分组重名的代理集合使用内部别名，原有连接参数、筛选和更新设置保持生效。
+
 微软、谷歌、Apple 的系统服务相邻排列，随后是这三家的软件服务与 `腾讯系软件服务`。Apple 系统规则会排除专用软件规则集，保留 Apple Music、TV 等服务的归类。
 
 `腾讯系软件服务` 使用 MetaCubeX 的 `tencent` 规则集，默认直连，可手选代理。腾讯 AI、音乐、视频中已有专用规则的域名优先进入对应分组。腾讯云共享域名也在这份规则集的范围内。
@@ -29,4 +31,4 @@
 
 在 Clash Party 用 [固定 Raw URL](https://raw.githubusercontent.com/AkiraNyx/clash-party-override/main/dist/AkiraNyx-Clash-Party.js) 导入远程覆写。Actions 发布新版后，在客户端点覆写卡片的刷新按钮拉取并热重载。
 
-修改构建数据时编辑 `build.py`，修改覆写设置时编辑 `override.template.js`。在项目目录本地运行 `python build.py` 生成，再运行 `node verify.mjs /path/to/mihomo` 检查。生成的规则数据来自 [MetaCubeX](https://github.com/MetaCubeX/meta-rules-dat) 和 [Telegram](https://core.telegram.org/resources/cidr.txt)，文件内记录源数据 SHA-256。
+修改构建数据时编辑 `build.py`，修改覆写设置时编辑 `override.template.js`。在项目目录本地运行 `python build.py` 生成，再运行 `node verify.mjs /path/to/mihomo` 检查。校验包含隔离内核的真实出口、节点顺序与集合更新测试，所有测试端点均在本机回环地址上。生成的规则数据来自 [MetaCubeX](https://github.com/MetaCubeX/meta-rules-dat) 和 [Telegram](https://core.telegram.org/resources/cidr.txt)，文件内记录源数据 SHA-256。

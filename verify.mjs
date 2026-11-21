@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { createContext, runInContext } from "node:vm";
+import { verifyRuntime } from "./verify-runtime.mjs";
 
 const core = process.argv[2];
 if (!core) throw new Error("Usage: node verify.mjs /path/to/mihomo");
@@ -147,7 +148,9 @@ try {
   assert.deepEqual(providerOnly["proxy-groups"][0].proxies, []);
   assert.deepEqual(providerOnly["proxy-groups"][0].use, ["Z-provider", "A-provider", "anx-direct-last"]);
   for (const [name, provider] of Object.entries(providerProfile["proxy-providers"])) {
-    assert.deepEqual(providerOnly["proxy-providers"][name], provider);
+    const { override, ...definition } = providerOnly["proxy-providers"][name];
+    assert.deepEqual(definition, provider);
+    assert.equal(override["override-expr"].length, 1);
   }
   assert.deepEqual(providerOnly["proxy-providers"]["anx-direct-last"], {
     type: "inline", payload: [{ name: "DIRECT", type: "direct" }],
@@ -161,10 +164,29 @@ try {
   assert.deepEqual(mixed["proxy-groups"][0].proxies, nodeNames);
   assert.deepEqual(mixed["proxy-groups"][0].use, ["Z-provider", "A-provider", "anx-direct-last"]);
   validate(mixed, "proxies-and-providers");
-  assert.deepEqual(evaluate(source, mixed)["proxy-groups"], mixed["proxy-groups"]);
+  const reapplied = evaluate(source, mixed);
+  assert.deepEqual(reapplied["proxy-groups"], mixed["proxy-groups"]);
+  assert.deepEqual(reapplied["proxy-providers"], mixed["proxy-providers"]);
+  const collisions = evaluate(source, {
+    "proxy-providers": {
+      OpenAI: { type: "file", path: "./nodes.yaml" },
+      "节点选择": { type: "file", path: "./nodes.yaml" },
+      "anx-direct-last": { type: "file", path: "./nodes.yaml" },
+      "anx-source-1": { type: "file", path: "./nodes.yaml" },
+    },
+  });
+  const collisionProviders = collisions["proxy-groups"][0].use;
+  assert.equal(new Set(collisionProviders).size, 5);
+  assert.equal(collisionProviders[3], "anx-source-1");
+  assert.equal(collisionProviders[4], "anx-direct-last");
+  assert.ok(collisionProviders.slice(0, 3).every((name) => !["OpenAI", "节点选择", "anx-direct-last"].includes(name)));
+  validate(collisions, "provider-name-collisions");
+  assert.deepEqual(evaluate(source, collisions), collisions);
   assert.throws(() => evaluate(source, {
-    "proxy-providers": { "anx-direct-last": { type: "file", path: "./custom.yaml" } },
-  }), /订阅代理集合名称与覆写冲突/);
+    "proxy-providers": {
+      Invalid: { type: "inline", payload: [proxy], override: { "override-expr": '.name = "DIRECT"' } },
+    },
+  }), /override-expr 必须是数组/);
 
   const guard = evaluate(source.replace("enableDnsGuard: false", "enableDnsGuard: true")
     .replace("allowedDnsIPv4: []", 'allowedDnsIPv4: ["192.168.1.53/32"]')
@@ -174,6 +196,7 @@ try {
   assert.equal(guard.rules[2], "DST-PORT,53/853,REJECT");
   assert.deepEqual(Object.keys(guard.dns["nameserver-policy"]).slice(0, 2), ["example.lan", "localhost"]);
   validate(guard, "dns-guard");
+  await verifyRuntime(core, (profile) => evaluate(source, profile), directory);
 } finally {
   const resolved = realpathSync(directory);
   if (dirname(resolved) === tempRoot && basename(resolved).startsWith("akiranyx-mihomo-")) {

@@ -11,6 +11,8 @@ const options = {
 
 const buildData = /* BUILD_DATA */ null;
 const primaryGroup = "节点选择";
+const directProviderName = "anx-direct-last";
+const directNameGuard = '.name |= sub("^DIRECT$"; "订阅 · DIRECT")';
 const domesticGroups = new Set([
   "DeepSeek", "其他国内 AI", "BiliBili", "其他国内流媒体",
   "Steam 下载", "米哈游国内", "鹰角网络", "腾讯系软件服务",
@@ -59,41 +61,93 @@ function selector(name, proxies) {
   };
 }
 
-function mergeGroups(config, services, rules) {
-  const nodeNames = new Set((config.proxies ?? []).map((proxy) => proxy.name));
-  const directProviderName = "anx-direct-last";
+function prepareProxyProviders(inputProviders, groupNames) {
+  const providers = new Map();
   const directProvider = { type: "inline", payload: [{ name: "DIRECT", type: "direct" }] };
-  const previousProviders = config["proxy-providers"] ?? {};
-  if (Object.hasOwn(previousProviders, directProviderName)
-      && JSON.stringify(previousProviders[directProviderName]) !== JSON.stringify(directProvider)) {
-    throw new Error(`订阅代理集合名称与覆写冲突：${directProviderName}`);
+  const reservedNames = new Set([...groupNames, directProviderName, "GLOBAL", "default"]);
+  const usedNames = new Set([...reservedNames, ...Object.keys(inputProviders)]);
+  let aliasIndex = 1;
+  for (const [name, provider] of Object.entries(inputProviders)) {
+    if (name === directProviderName && JSON.stringify(provider) === JSON.stringify(directProvider)) {
+      continue;
+    }
+    let providerName = name;
+    if (reservedNames.has(name)) {
+      do {
+        providerName = `anx-source-${aliasIndex++}`;
+      } while (usedNames.has(providerName));
+    }
+    usedNames.add(providerName);
+
+    const override = provider.override ?? {};
+    const expressions = override["override-expr"] ?? [];
+    if (!Array.isArray(expressions)) {
+      throw new Error(`代理集合 ${name} 的 override-expr 必须是数组`);
+    }
+    // Runs after every upstream rename, including prefix/suffix and override-expr.
+    const guardedExpressions = expressions[expressions.length - 1] === directNameGuard
+      ? expressions : [...expressions, directNameGuard];
+    providers.set(providerName, {
+      ...provider, override: { ...override, "override-expr": guardedExpressions },
+    });
   }
-  const providerNames = Object.keys(previousProviders).filter((name) => name !== directProviderName);
-  const managed = new Set(services.map(([, group]) => group));
-  managed.delete("DIRECT");
-  managed.delete(primaryGroup);
-  managed.add("QUIC 控制");
-  managed.add("UDP 控制");
-  managed.add("BiliBili 港澳台");
-  for (const name of [...managed, primaryGroup]) {
+  const sourceProviderNames = [...providers.keys()];
+  if (sourceProviderNames.length) providers.set(directProviderName, directProvider);
+  return { proxyProviders: Object.fromEntries(providers), sourceProviderNames };
+}
+
+function validateGroupReferences(groups) {
+  const visiting = new Set();
+  const visited = new Set();
+  function visit(name) {
+    if (visited.has(name) || !groups.has(name)) return;
+    if (visiting.has(name)) throw new Error(`代理组循环引用：${name}`);
+    visiting.add(name);
+    for (const child of groups.get(name).proxies ?? []) visit(child);
+    visiting.delete(name);
+    visited.add(name);
+  }
+  for (const name of groups.keys()) visit(name);
+}
+
+function withGroupIcon(group) {
+  if (!Object.hasOwn(groupEmoji, group.name)) return group;
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+    + '<text x="12" y="12" text-anchor="middle" dominant-baseline="central" font-size="18" '
+    + `font-family="Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif">${groupEmoji[group.name]}</text></svg>`;
+  return { ...group, icon: `data:image/svg+xml,${encodeURIComponent(svg)}` };
+}
+
+function buildGroups(config, services, rules) {
+  const nodeNames = new Set((config.proxies ?? []).map((proxy) => proxy.name));
+  const managedGroupNames = new Set(services.map(([, group]) => group));
+  managedGroupNames.delete("DIRECT");
+  managedGroupNames.add(primaryGroup);
+  managedGroupNames.add("QUIC 控制");
+  managedGroupNames.add("UDP 控制");
+  managedGroupNames.add("BiliBili 港澳台");
+  for (const name of managedGroupNames) {
     if (nodeNames.has(name)) {
       throw new Error(`代理节点名称与覆写代理组冲突：${name}`);
     }
   }
+  const { proxyProviders, sourceProviderNames } = prepareProxyProviders(
+    config["proxy-providers"] ?? {}, managedGroupNames,
+  );
 
   const groups = new Map();
   const primary = { name: primaryGroup, type: "select", proxies: [...nodeNames] };
-  if (providerNames.length) {
+  if (sourceProviderNames.length) {
     // Provider members follow explicit proxies; a final inline provider keeps DIRECT last.
-    config["proxy-providers"] = { ...previousProviders, [directProviderName]: directProvider };
-    primary.use = [...providerNames, directProviderName];
+    primary.use = [...sourceProviderNames, directProviderName];
   } else {
     primary.proxies.push("DIRECT");
   }
   groups.set(primaryGroup, primary);
-  for (const name of managed) {
+  for (const name of managedGroupNames) {
+    if (name === primaryGroup) continue;
     const candidates = domesticGroups.has(name) ? ["DIRECT", primaryGroup] : [primaryGroup, "DIRECT"];
-    groups.set(name, { ...selector(name, [...candidates, ...nodeNames]), use: providerNames });
+    groups.set(name, { ...selector(name, [...candidates, ...nodeNames]), use: sourceProviderNames });
   }
   groups.set("广告拦截", selector("广告拦截", ["REJECT", "PASS"]));
   groups.set("QUIC 控制", selector("QUIC 控制", ["PASS", "REJECT"]));
@@ -101,33 +155,17 @@ function mergeGroups(config, services, rules) {
   groups.set("Steam 下载", selector("Steam 下载", ["DIRECT"]));
   groups.set("BiliBili", selector("BiliBili", ["DIRECT", "BiliBili 港澳台"]));
   groups.set("BiliBili 港澳台", {
-    ...selector("BiliBili 港澳台", [primaryGroup, ...nodeNames]), use: providerNames,
+    ...selector("BiliBili 港澳台", [primaryGroup, ...nodeNames]), use: sourceProviderNames,
   });
 
-  const visiting = new Set();
-  const visited = new Set();
-  function check(name) {
-    if (visited.has(name) || !groups.has(name)) return;
-    if (visiting.has(name)) throw new Error(`代理组循环引用：${name}`);
-    visiting.add(name);
-    for (const child of groups.get(name).proxies ?? []) check(child);
-    visiting.delete(name);
-    visited.add(name);
-  }
-  for (const name of groups.keys()) check(name);
+  validateGroupReferences(groups);
   const order = new Set([primaryGroup]);
   for (const rule of rules) {
     const name = rule.replace(/,no-resolve$/, "").split(",").pop();
     if (groups.has(name)) order.add(name);
     if (name === "BiliBili") order.add("BiliBili 港澳台");
   }
-  return [...order].map((name) => groups.get(name)).map((group) => {
-    if (!Object.hasOwn(groupEmoji, group.name)) return group;
-    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
-      + '<text x="12" y="12" text-anchor="middle" dominant-baseline="central" font-size="18" '
-      + `font-family="Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif">${groupEmoji[group.name]}</text></svg>`;
-    return { ...group, icon: `data:image/svg+xml,${encodeURIComponent(svg)}` };
-  });
+  return { groups: [...order].map((name) => withGroupIcon(groups.get(name))), proxyProviders };
 }
 
 function domainMatch(names) {
@@ -218,18 +256,23 @@ function main(config) {
   if (!config || typeof config !== "object" || !buildData) {
     throw new Error("缺少订阅配置或内联数据，请使用构建后的覆写文件");
   }
-  const { providers, services, bootstrap } = buildData;
-  const previousProviders = config["rule-providers"] ?? {};
-  for (const [name, provider] of Object.entries(providers)) {
-    if (Object.hasOwn(previousProviders, name)
-        && JSON.stringify(previousProviders[name]) !== JSON.stringify(provider)) {
+  const { providers: ruleProviders, services, bootstrap } = buildData;
+  const existingRuleProviders = config["rule-providers"] ?? {};
+  for (const [name, provider] of Object.entries(ruleProviders)) {
+    if (Object.hasOwn(existingRuleProviders, name)
+        && JSON.stringify(existingRuleProviders[name]) !== JSON.stringify(provider)) {
       throw new Error(`订阅规则集名称与覆写冲突：${name}`);
     }
   }
   const rules = buildRules(services);
-  config["proxy-groups"] = mergeGroups(config, services, rules);
-  config["rule-providers"] = { ...previousProviders, ...providers };
+  const { groups, proxyProviders } = buildGroups(config, services, rules);
+  const dns = buildDns(services, bootstrap);
+  config["proxy-groups"] = groups;
+  if (config["proxy-providers"] || Object.keys(proxyProviders).length) {
+    config["proxy-providers"] = proxyProviders;
+  }
+  config["rule-providers"] = { ...existingRuleProviders, ...ruleProviders };
   config.rules = rules;
-  config.dns = buildDns(services, bootstrap);
+  config.dns = dns;
   return config;
 }
